@@ -9,6 +9,7 @@ load_dotenv()
 # Get the base directory (where this script is located)
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / 'config' / 'data'
+CONFIG_DIR = BASE_DIR / 'config'
 
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -26,6 +27,19 @@ categories = [
     "Lighting",
     "Remarks"
 ]
+
+# Default settings
+DEFAULT_SETTINGS = {
+    'STEPS': '20',
+    'CFG_SCALE': '9.5',
+    'SAMPLER': 'DPM++ 2M Karras',
+    'WIDTH': '1024',
+    'HEIGHT': '1024',
+    'SEED': '-1'
+}
+
+# Default negative prompt (used if file not found)
+DEFAULT_NEGATIVE_PROMPT = 'deformed, ugly, creepy, mutation'
 
 # Prompt template (order of parts)
 def build_prompt(parts):
@@ -68,7 +82,31 @@ def get_unique_filename(base_name):
             return candidate
         counter += 1
 
+def load_settings():
+    """Load settings from config file or use defaults"""
+    settings = DEFAULT_SETTINGS.copy()
+    settings_file = CONFIG_DIR / 'settings.txt'
+    
+    if settings_file.exists():
+        try:
+            with open(settings_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        key, value = line.split('=', 1)
+                        key = key.strip()
+                        value = value.strip()
+                        if key in settings:
+                            settings[key] = value
+            print(f"Loaded settings from {settings_file}")
+        except Exception as e:
+            print(f"Error loading settings: {e}. Using default settings.")
+    
+    return settings
+
 def main():
+    # Load settings
+    settings = load_settings()
     num_prompts = 100
     output_file = get_unique_filename("generated_prompts.txt")
     
@@ -111,13 +149,23 @@ def main():
             # Build prompt
             prompt_text = build_prompt(parts)
             
+            # Load negative prompt from file or use default
+            negative_prompt_file = DATA_DIR / "NegativePrompt.txt"
+            try:
+                with open(negative_prompt_file, 'r', encoding='utf-8') as f:
+                    negative_prompt = f.read().strip()
+                print(f"Using negative prompt from {negative_prompt_file}")
+            except Exception as e:
+                print(f"Error loading negative prompt from file, using default. Error: {str(e)}")
+                negative_prompt = DEFAULT_NEGATIVE_PROMPT
+
             # A1111 format
             line = (
                 f'--prompt "{prompt_text}" \
---negative_prompt "deformed, ugly, creepy, mutation" \
---steps 20 --cfg_scale 9.5 \
---sampler_name "DPM++ 2M Karras" --seed -1 \
---width 1024 --height 1024\n'
+--negative_prompt "{negative_prompt}" \
+--steps {settings["STEPS"]} --cfg_scale {settings["CFG_SCALE"]} \
+--sampler_name "{settings["SAMPLER"]}" --seed {settings["SEED"]} \
+--width {settings["WIDTH"]} --height {settings["HEIGHT"]}\n'
             )
             f.write(line)
     

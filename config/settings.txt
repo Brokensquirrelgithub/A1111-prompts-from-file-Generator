@@ -1,0 +1,11 @@
+# A1111 WebUI Generation Settings
+# Format: key=value
+# Comments start with #
+
+# Generation parameters
+STEPS=20
+CFG_SCALE=9.5
+SAMPLER=DPM++ 2M Karras
+WIDTH=1024
+HEIGHT=1024
+SEED=-1
