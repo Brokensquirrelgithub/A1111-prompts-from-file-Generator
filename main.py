@@ -10,6 +10,66 @@ import platform
 import json
 import shutil
 
+class ToolTip(object):
+    """Create a tooltip for a given widget."""
+    def __init__(self, widget, text='widget info'):
+        self.waittime = 500     # milliseconds
+        self.wraplength = 300   # pixels
+        self.widget = widget
+        self.text = text
+        self.widget.bind("<Enter>", self.enter)
+        self.widget.bind("<Leave>", self.leave)
+        self.widget.bind("<ButtonPress>", self.leave)
+        self.id = None
+        self.tw = None
+
+    def enter(self, event=None):
+        self.schedule()
+
+    def leave(self, event=None):
+        self.unschedule()
+        self.hidetip()
+
+    def schedule(self):
+        self.unschedule()
+        self.id = self.widget.after(self.waittime, self.showtip)
+
+    def unschedule(self):
+        id = self.id
+        self.id = None
+        if id:
+            self.widget.after_cancel(id)
+
+    def showtip(self, event=None):
+        x = y = 0
+        x, y, _, _ = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 25
+        
+        # Create a toplevel window
+        self.tw = tk.Toplevel(self.widget)
+        # Leaves only the label and removes the app window
+        self.tw.wm_overrideredirect(True)
+        self.tw.wm_geometry(f"+{x}+{y}")
+        
+        label = ttk.Label(
+            self.tw, 
+            text=self.text, 
+            justify=tk.LEFT,
+            background="#ffffe0", 
+            relief=tk.SOLID, 
+            borderwidth=1,
+            wraplength=self.wraplength,
+            padding=(5, 2, 5, 2)
+        )
+        label.pack(ipadx=1)
+
+    def hidetip(self):
+        tw = self.tw
+        self.tw = None
+        if tw:
+            tw.destroy()
+
 # Load environment variables
 load_dotenv()
 
@@ -133,67 +193,99 @@ def open_text_editor(file_path):
         if platform.system() == "Windows":
             os.startfile(file_path)
         elif platform.system() == "Darwin":  # macOS
-            subprocess.Popen(["open", "-t", file_path])
+            subprocess.Popen(["open", str(file_path)])
         else:  # Linux
-            subprocess.Popen(["xdg-open", file_path])
+            subprocess.Popen(["xdg-open", str(file_path)])
     except Exception as e:
         messagebox.showerror("Error", f"Could not open file: {str(e)}")
 
-class CollapsibleFrame(ttk.LabelFrame):
-    def __init__(self, parent, text="", *args, **kwargs):
-        ttk.LabelFrame.__init__(self, parent, *args, **kwargs)
-        self.parent = parent
-        self.show = False
-        self.title = text
+class CollapsibleFrame(ttk.Frame):
+    def __init__(self, parent, text, padding=0, app_instance=None):
+        # Create a frame with a border
+        style = ttk.Style()
+        style.configure('Border.TFrame', borderwidth=1, relief='solid')
         
-        # Header frame with toggle button and label
-        self.header = ttk.Frame(self)
-        self.header.pack(fill=tk.X, expand=1)
+        ttk.Frame.__init__(self, parent, style='Border.TFrame', padding=2)
+        self.parent = parent
+        self.title = text
+        self.expanded = False
+        self.app = app_instance  # Store reference to the app instance
+        
+        # Create an inner frame for the content
+        self.inner_frame = ttk.Frame(self, padding=2)
+        self.inner_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Create the header frame with a button and label
+        self.header = ttk.Frame(self.inner_frame)
+        self.header.pack(fill=tk.X, expand=1, pady=2)
         
         # Toggle button
-        self.toggle_btn = ttk.Label(self.header, text="+", width=3, cursor="hand2")
+        self.toggle_btn = ttk.Label(self.header, text="+", cursor="hand2")
         self.toggle_btn.pack(side=tk.LEFT, padx=2)
-        
-        # Title label
-        self.title_label = ttk.Label(self.header, text=text, font=('TkDefaultFont', 10, 'bold'))
-        self.title_label.pack(side=tk.LEFT, fill=tk.X, expand=1)
-        
-        # Content frame (initially hidden)
-        self.content = ttk.Frame(self)
-        
-        # Bind click events
         self.toggle_btn.bind("<Button-1>", self.toggle)
+        ToolTip(self.toggle_btn, "Expand/Collapse this category")
+        
+        # Title label with edit button
+        title_frame = ttk.Frame(self.header)
+        title_frame.pack(side=tk.LEFT, fill=tk.X, expand=1)
+        
+        self.title_label = ttk.Label(title_frame, text=text, font=('TkDefaultFont', 10, 'bold'))
+        self.title_label.pack(side=tk.LEFT, fill=tk.X, expand=1)
         self.title_label.bind("<Button-1>", self.toggle)
         
-        # Add edit button
-        self.edit_btn = ttk.Button(self.header, text="✏️", width=3, 
-                                 command=self.edit_content)
-        self.edit_btn.pack(side=tk.RIGHT, padx=2)
+        # Edit button with better visibility
+        self.edit_btn = ttk.Label(
+            title_frame, 
+            text="✏️", 
+            cursor="pencil",
+            font=('TkDefaultFont', 10),
+            foreground='#555555',
+            padding=(0, 0, 5, 0)
+        )
+        ToolTip(self.edit_btn, f"Edit {text} category")
+        self.edit_btn.pack(side=tk.RIGHT, padx=(0, 5))
+        self.edit_btn.bind("<Button-1>", self.edit_content)
         
+        # Content frame (initially hidden)
+        self.content = ttk.Frame(self.inner_frame, padding=padding)
+        self.content.pack(fill=tk.BOTH, expand=1)
+        self.content.pack_forget()  # Hide initially
+    
     def toggle(self, event=None):
-        self.show = not self.show
-        if self.show:
-            self.content.pack(fill=tk.BOTH, expand=1, pady=(5, 0))
+        self.expanded = not self.expanded
+        if self.expanded:
+            self.content.pack(fill=tk.X, expand=1, pady=(5, 0))
             self.toggle_btn.config(text="−")  # Minus sign
         else:
             self.content.pack_forget()
             self.toggle_btn.config(text="+")
         # Update scroll region after toggling
+        if hasattr(self.app, 'update_scroll_region'):
+            self.app.update_scroll_region()
         if hasattr(self.master, 'update_scroll_region'):
             self.master.update_scroll_region()
     
     def edit_content(self, event=None):
         # Open the file in the default text editor
-        app = self.parent.master.master.master # A bit of a hack to get the app instance
-        file_path = app.data_dir / f"{self.title}.txt"
+        if not hasattr(self, 'app') or self.app is None:
+            messagebox.showerror("Error", "Could not access application instance")
+            return
+            
+        file_path = self.app.data_dir / f"{self.title}.txt"
         if file_path.exists() or file_path.is_symlink():
             open_text_editor(file_path)
         else:
             # Create the file if it doesn't exist
             try:
-                with open(file_path, 'w', encoding='utf-8'):
-                    pass
+                # Ensure the data directory exists
+                self.app.data_dir.mkdir(parents=True, exist_ok=True)
+                # Create an empty file
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write("")
                 open_text_editor(file_path)
+                # Refresh the panel to show the new content
+                if hasattr(self.app, 'update_panels'):
+                    self.app.update_panels()
             except Exception as e:
                 messagebox.showerror("Error", f"Could not create file: {str(e)}")
 
@@ -213,9 +305,11 @@ class PromptGeneratorApp:
         self.menu_bar = tk.Menu(root)
         root.config(menu=self.menu_bar)
 
-        # Create a File menu
-        file_menu = tk.Menu(self.menu_bar, tearoff=0)
+        # File menu with tooltips
+        file_menu = tk.Menu(self.menu_bar, tearoff=0, postcommand=lambda: self.update_menu_tooltips(file_menu))
         self.menu_bar.add_cascade(label="File", menu=file_menu)
+        
+        # Add menu items with tooltips
         file_menu.add_command(label="New Profile", command=self.new_profile)
         file_menu.add_command(label="Open Profile", command=self.open_profile)
         file_menu.add_command(label="Save Profile", command=self.save_profile)
@@ -223,6 +317,15 @@ class PromptGeneratorApp:
         file_menu.add_command(label="Delete Profile", command=self.delete_profile)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=root.quit)
+        
+        # Store menu tooltips
+        self.menu_tooltips = {
+            "New Profile": "Create a new profile with default settings",
+            "Open Profile": "Load an existing profile",
+            "Save Profile": "Save the current profile",
+            "Save Profile As...": "Save the current profile with a new name",
+            "Delete Profile": "Delete the current profile"
+        }
         self.root.geometry("800x900")
         
         # Load settings and categories
@@ -310,8 +413,13 @@ class PromptGeneratorApp:
         top_btn_frame.pack(fill=tk.X, pady=5)
         
         # Add/Remove Buttons - Top Row
-        ttk.Button(top_btn_frame, text="+", width=5, command=self.add_category).pack(side=tk.LEFT, padx=2)
-        ttk.Button(top_btn_frame, text="-", width=5, command=self.remove_category).pack(side=tk.LEFT, padx=2)
+        add_btn = ttk.Button(top_btn_frame, text="+", width=5, command=self.add_category)
+        add_btn.pack(side=tk.LEFT, padx=2)
+        ToolTip(add_btn, "Add a new category")
+        
+        remove_btn = ttk.Button(top_btn_frame, text="-", width=5, command=self.remove_category)
+        remove_btn.pack(side=tk.LEFT, padx=2)
+        ToolTip(remove_btn, "Remove selected category")
         
         # Status Label - Next to buttons
         self.status_var = tk.StringVar()
@@ -342,10 +450,12 @@ class PromptGeneratorApp:
         # Move Up button
         up_btn = ttk.Button(btn_frame, text="↑", width=3, command=self.move_category_up)
         up_btn.pack(pady=(10, 2), fill=tk.X)
+        ToolTip(up_btn, "Move selected category up")
         
         # Move Down button
         down_btn = ttk.Button(btn_frame, text="↓", width=3, command=self.move_category_down)
         down_btn.pack(pady=2, fill=tk.X)
+        ToolTip(down_btn, "Move selected category down")
         
         # Bind double click to toggle panel and handle selection
         self.cat_listbox.bind('<Double-1>', self.on_category_select)
@@ -438,7 +548,9 @@ class PromptGeneratorApp:
         right_frame.pack(side=tk.RIGHT, fill=tk.Y)
         
         # Generate button
-        ttk.Button(right_frame, text="Generate", command=self.generate_prompts).pack(side=tk.LEFT, padx=2)
+        generate_btn = ttk.Button(right_frame, text="Generate", command=self.generate_prompts)
+        generate_btn.pack(side=tk.LEFT, padx=2)
+        ToolTip(generate_btn, "Generate prompts with current settings")
         
         # Number of prompts entry
         ttk.Label(right_frame, text="Prompts:").pack(side=tk.LEFT, padx=(10, 2))
@@ -456,6 +568,7 @@ class PromptGeneratorApp:
             style='Settings.TButton'  # Using a custom style for the settings button
         )
         settings_btn.pack(side=tk.LEFT, padx=(10, 2))
+        ToolTip(settings_btn, "Open settings file")
         
         # Configure the settings button style with a larger font
         style = ttk.Style()
@@ -465,8 +578,13 @@ class PromptGeneratorApp:
         util_frame = ttk.Frame(self.inner_frame)
         util_frame.pack(fill=tk.X, pady=5, padx=10)
         
-        ttk.Button(util_frame, text="Open Output Folder", command=self.open_output_folder).pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
-        ttk.Button(util_frame, text="Open Data Folder", command=self.open_text_files).pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
+        output_btn = ttk.Button(util_frame, text="Open Output Folder", command=self.open_output_folder)
+        output_btn.pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
+        ToolTip(output_btn, "Open the folder containing generated prompts")
+        
+        data_btn = ttk.Button(util_frame, text="Open Data Folder", command=self.open_text_files)
+        data_btn.pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
+        ToolTip(data_btn, "Open the data folder for the current profile")
         
         # Status bar is now in the top button row
         
@@ -661,8 +779,8 @@ class PromptGeneratorApp:
         
         # Create a panel for each category
         for cat in self.categories:
-            panel = CollapsibleFrame(self.panels_frame, text=cat, padding="5")
-            panel.pack(fill=tk.X, pady=2, padx=5)
+            panel = CollapsibleFrame(self.panels_frame, text=cat, padding=5, app_instance=self)
+            panel.pack(fill=tk.X, pady=3, padx=5, ipady=2)
             
             # Add text widget to display content
             text_frame = ttk.Frame(panel.content)
@@ -1007,6 +1125,30 @@ class PromptGeneratorApp:
             self.cat_listbox.yview_scroll(-1, "units")
         elif event.num == 5 or event.delta == -120:  # Scroll down
             self.cat_listbox.yview_scroll(1, "units")
+            
+    def update_menu_tooltips(self, menu):
+        """Update the status bar with menu item descriptions"""
+        def on_enter(event):
+            # Get the index of the menu item under the cursor
+            try:
+                index = menu.index(f'@{event.x},{event.y}')
+                label = menu.entrycget(index, 'label')
+                if label in self.menu_tooltips:
+                    self.status_var.set(self.menu_tooltips[label])
+            except tk.TclError:
+                pass
+                
+        def on_leave(event):
+            self.status_var.set("Ready")
+            
+        # Remove previous bindings
+        if hasattr(self, '_menu_enter_binding'):
+            menu.unbind('<Motion>', self._menu_enter_binding)
+            menu.unbind('<Leave>', self._menu_leave_binding)
+            
+        # Add new bindings
+        self._menu_enter_binding = menu.bind('<Motion>', on_enter)
+        self._menu_leave_binding = menu.bind('<Leave>', on_leave)
         return "break"
 
 def main():
