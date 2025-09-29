@@ -24,3 +24,6 @@ env/
 .vscode/
 *.swp
 *.swo
+
+# Profiles
+config/profiles/

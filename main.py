@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 import subprocess
 import sys
 import platform
+import json
+import shutil
 
 # Load environment variables
 load_dotenv()
@@ -15,6 +17,10 @@ load_dotenv()
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / 'config' / 'data'
 CONFIG_DIR = BASE_DIR / 'config'
+PROFILES_DIR = BASE_DIR / 'config' / 'profiles'
+
+# Ensure profiles directory exists
+os.makedirs(PROFILES_DIR, exist_ok=True)
 
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -178,7 +184,8 @@ class CollapsibleFrame(ttk.LabelFrame):
     
     def edit_content(self, event=None):
         # Open the file in the default text editor
-        file_path = DATA_DIR / f"{self.title}.txt"
+        app = self.parent.master.master.master # A bit of a hack to get the app instance
+        file_path = app.data_dir / f"{self.title}.txt"
         if file_path.exists() or file_path.is_symlink():
             open_text_editor(file_path)
         else:
@@ -194,12 +201,51 @@ class PromptGeneratorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("A1111 Prompt Generator")
+        self.current_profile_path = None
+        self.unsaved_changes = False
+        # Set the initial data directory to the default one
+        self.data_dir = DATA_DIR
+        self.status_var = tk.StringVar()
+        self.status_var.set("Ready")
+        self.update_title()
+
+        # Create a menu bar
+        self.menu_bar = tk.Menu(root)
+        root.config(menu=self.menu_bar)
+
+        # Create a File menu
+        file_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.menu_bar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="New Profile", command=self.new_profile)
+        file_menu.add_command(label="Open Profile", command=self.open_profile)
+        file_menu.add_command(label="Save Profile", command=self.save_profile)
+        file_menu.add_command(label="Save Profile As...", command=lambda: self.save_profile(save_as=True))
+        file_menu.add_command(label="Delete Profile", command=self.delete_profile)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=root.quit)
         self.root.geometry("800x900")
         
         # Load settings and categories
         self.settings = load_settings()
         self.categories = categories.copy()
         self.panels = {}
+        
+        # Create default profile if none exists
+        if not any(PROFILES_DIR.iterdir()):
+            default_profile = PROFILES_DIR / 'Default'
+            default_profile.mkdir(parents=True, exist_ok=True)
+            (default_profile / 'data').mkdir(exist_ok=True)
+            
+            # Create default profile.json
+            profile_data = {'categories': categories}
+            with open(default_profile / 'profile.json', 'w', encoding='utf-8') as f:
+                json.dump(profile_data, f, indent=4)
+                
+            # Set as current profile and update UI
+            self.current_profile_path = default_profile
+            self.data_dir = default_profile / 'data'
+            self.categories = categories.copy()  # Ensure categories are loaded
+            self.status_var.set(f"Created default profile 'Default'")
         
         # Create main container with canvas and scrollbar
         self.main_frame = ttk.Frame(root)
@@ -426,6 +472,134 @@ class PromptGeneratorApp:
         
         # Initialize UI
         self.update_category_list()
+
+    def update_title(self):
+        title = "A1111 Prompt Generator"
+        if self.current_profile_path:
+            title += f" - {self.current_profile_path.name}"
+        else:
+            title += " - New Profile"
+        
+        if self.unsaved_changes:
+            title += "*"
+            
+        self.root.title(title)
+
+    def set_unsaved_changes(self, changed=True):
+        if self.unsaved_changes != changed:
+            self.unsaved_changes = changed
+            self.update_title()
+
+    def new_profile(self):
+        if self.unsaved_changes:
+            response = messagebox.askyesnocancel("Unsaved Changes", "You have unsaved changes. Do you want to save before proceeding?", default=messagebox.CANCEL)
+            if response is None:
+                return
+            if response:
+                self.save_profile()
+
+        self.categories = categories.copy()
+        self.current_profile_path = None
+        self.data_dir = DATA_DIR  # Reset to default data dir
+        self.set_unsaved_changes(False)
+        self.update_category_list()
+        self.status_var.set("New profile created.")
+
+    def save_profile(self, save_as=False):
+        profile_path = self.current_profile_path
+
+        if save_as or not profile_path:
+            profile_name = simpledialog.askstring("Save Profile", "Enter a name for the profile:")
+            if not profile_name:
+                return
+            profile_path = PROFILES_DIR / profile_name
+
+        if not profile_path.exists():
+            os.makedirs(profile_path / 'data')
+
+        # Save the category list to profile.json
+        profile_data = {'categories': self.categories}
+        try:
+            with open(profile_path / 'profile.json', 'w', encoding='utf-8') as f:
+                json.dump(profile_data, f, indent=4)
+
+            # Copy current .txt files to the profile's data directory
+            dest_data_dir = profile_path / 'data'
+            for category in self.categories:
+                source_file = self.data_dir / f"{category}.txt"
+                dest_file = dest_data_dir / f"{category}.txt"
+                if source_file.exists() and (not dest_file.exists() or save_as):
+                    shutil.copy2(source_file, dest_file)
+                elif not source_file.exists() and not dest_file.exists():
+                    # Create empty file if it doesn't exist anywhere
+                    open(dest_file, 'w').close()
+
+            self.current_profile_path = profile_path
+            self.data_dir = dest_data_dir
+            self.set_unsaved_changes(False)
+            self.status_var.set(f"Profile '{profile_path.name}' saved.")
+
+        except Exception as e:
+            messagebox.showerror("Error Saving Profile", f"Could not save profile: {e}")
+
+    def open_profile(self):
+        if self.unsaved_changes:
+            response = messagebox.askyesnocancel("Unsaved Changes", "You have unsaved changes. Do you want to save before opening a new profile?", default=messagebox.CANCEL)
+            if response is None: return
+            if response: self.save_profile()
+
+        profile_path = filedialog.askdirectory(
+            initialdir=PROFILES_DIR,
+            title="Open Profile"
+        )
+        if not profile_path:
+            return
+
+        profile_path = Path(profile_path)
+        profile_json = profile_path / 'profile.json'
+
+        if not profile_json.exists():
+            messagebox.showerror("Error", "Selected directory is not a valid profile (missing profile.json).")
+            return
+
+        try:
+            with open(profile_json, 'r', encoding='utf-8') as f:
+                profile_data = json.load(f)
+            
+            self.categories = profile_data.get('categories', [])
+            self.current_profile_path = profile_path
+            self.data_dir = profile_path / 'data'
+            self.set_unsaved_changes(False)
+            self.update_category_list()
+            self.status_var.set(f"Profile '{profile_path.name}' loaded.")
+            self.update_title()  # Update window title with profile name
+        except Exception as e:
+            messagebox.showerror("Error Opening Profile", f"Could not open profile: {e}")
+
+    def delete_profile(self):
+        profile_path = filedialog.askdirectory(
+            initialdir=PROFILES_DIR,
+            title="Delete Profile"
+        )
+        if not profile_path:
+            return
+
+        profile_path = Path(profile_path)
+        if not profile_path.exists():
+            messagebox.showerror("Error", "Profile directory not found.")
+            return
+
+        response = messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete the profile '{profile_path.name}' and all its data?")
+        if not response:
+            return
+
+        try:
+            shutil.rmtree(profile_path)
+            self.status_var.set(f"Profile '{profile_path.name}' deleted.")
+            if profile_path == self.current_profile_path:
+                self.new_profile()
+        except Exception as e:
+            messagebox.showerror("Error Deleting Profile", f"Could not delete profile: {e}")
     
     def move_category_up(self):
         """Move selected category up in the list"""
@@ -435,6 +609,7 @@ class PromptGeneratorApp:
             
         for i in selected:
             if i > 0:  # Ensure we don't go below 0
+                self.set_unsaved_changes()
                 # Swap items in the categories list
                 self.categories[i], self.categories[i-1] = self.categories[i-1], self.categories[i]
                 
@@ -452,6 +627,7 @@ class PromptGeneratorApp:
             
         for i in reversed(selected):  # Process from bottom to avoid index issues
             if i < len(self.categories) - 1:  # Ensure we don't go beyond list length
+                self.set_unsaved_changes()
                 # Swap items in the categories list
                 self.categories[i], self.categories[i+1] = self.categories[i+1], self.categories[i]
                 
@@ -505,7 +681,7 @@ class PromptGeneratorApp:
             text_widget.config(state=tk.NORMAL)
             
             # Load content from file
-            file_path = DATA_DIR / f"{cat}.txt"
+            file_path = self.data_dir / f"{cat}.txt"
             if file_path.exists() or file_path.is_symlink():
                 try:
                     with open(file_path, 'r', encoding='utf-8') as f:
@@ -627,13 +803,13 @@ class PromptGeneratorApp:
                     if not target.exists():
                         raise FileNotFoundError(f"File not found: {target}")
                         
-                    link_path = DATA_DIR / f"{name}.txt"
+                    link_path = self.data_dir / f"{name}.txt"
                     if link_path.exists():
                         raise FileExistsError(f"A file named {name}.txt already exists")
                         
                     # Create a relative symlink if possible
                     try:
-                        rel_path = os.path.relpath(target, DATA_DIR)
+                        rel_path = os.path.relpath(target, self.data_dir)
                         link_path.symlink_to(rel_path)
                     except (ValueError, OSError):
                         # Fall back to absolute path if relative fails
@@ -650,6 +826,7 @@ class PromptGeneratorApp:
                 
             if name not in self.categories:
                 self.categories.append(name)
+                self.set_unsaved_changes()
                 self.update_category_list()
                 
             dialog.destroy()
@@ -672,6 +849,7 @@ class PromptGeneratorApp:
         # Remove from the end to avoid index shifting
         for i in sorted(selected, reverse=True):
             self.categories.pop(i)
+        self.set_unsaved_changes()
         
         self.update_category_list()
         self.status_var.set(f"Removed {len(selected)} categories")
