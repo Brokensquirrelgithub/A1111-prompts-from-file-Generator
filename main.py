@@ -1,5 +1,17 @@
 import random
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Get the base directory (where this script is located)
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / 'config' / 'data'
+
+# Ensure data directory exists
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # List of categories and their corresponding filenames
 categories = [
@@ -21,17 +33,27 @@ def build_prompt(parts):
     return ", ".join(part for part in parts if part)
 
 def find_case_insensitive_file(base_name):
-    """Find a file with case-insensitive matching"""
-    directory = os.path.dirname(os.path.abspath(__file__))
-    for file in os.listdir(directory):
-        if file.lower() == base_name.lower():
-            return file
+    """Find a file with case-insensitive matching in the data directory"""
+    if not os.path.exists(DATA_DIR):
+        return None
+        
+    target_lower = base_name.lower()
+    for file in os.listdir(DATA_DIR):
+        if file.lower() == target_lower:
+            return DATA_DIR / file
     return None
 
 def load_options(filename):
     """Load lines from a txt file, stripping whitespace and ignoring empty lines"""
-    with open(filename, "r", encoding="utf-8") as f:
-        return [line.strip() for line in f if line.strip()]
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f if line.strip()]
+    except FileNotFoundError:
+        print(f"Warning: File not found: {filename}")
+        return []
+    except Exception as e:
+        print(f"Error reading {filename}: {str(e)}")
+        return []
 
 def get_unique_filename(base_name):
     """Return filename that does not clash with existing files."""
@@ -49,6 +71,11 @@ def get_unique_filename(base_name):
 def main():
     num_prompts = 100
     output_file = get_unique_filename("generated_prompts.txt")
+    
+    # Create output directory if it doesn't exist
+    output_dir = BASE_DIR / "output"
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = output_dir / output_file
     
     # Load all category options
     options = {}
@@ -74,7 +101,7 @@ def main():
             print(f"Error: No options found for {cat}. Please check {cat}.txt")
             return
     
-    with open(output_file, "w", encoding="utf-8") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         for _ in range(num_prompts):
             parts = []
             for cat in categories:
@@ -94,9 +121,19 @@ def main():
             )
             f.write(line)
     
-    print(f"\nGenerated {num_prompts} prompts saved to {output_file}")
+    print(f"\nGenerated {num_prompts} prompts saved to {output_path}")
     print("Example prompt:")
     print(line.strip())
+    
+    # Create a README if it doesn't exist
+    readme_path = DATA_DIR / "README.md"
+    if not os.path.exists(readme_path):
+        with open(readme_path, "w", encoding="utf-8") as f:
+            f.write("# Prompt Generator Data Files\n\n")
+            f.write("Add your prompt options to these text files. Each line should contain one option.\n\n")
+            f.write("## Files\n")
+            for cat in categories:
+                f.write(f"- {cat}.txt\n")
 
 if __name__ == "__main__":
     main()
