@@ -1,0 +1,29 @@
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 0, 0, 0),
+    prodvers=(1, 0, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          '040904B0',
+          [StringStruct('CompanyName', 'Your Company'),
+          StringStruct('FileDescription', 'A1111 Prompt Generator'),
+          StringStruct('FileVersion', '1.0.0'),
+          StringStruct('InternalName', 'A1111 Prompt Generator'),
+          StringStruct('LegalCopyright', '© 2024 Your Company. All rights reserved.'),
+          StringStruct('OriginalFilename', 'A1111-Prompt-Generator.exe'),
+          StringStruct('ProductName', 'A1111 Prompt Generator'),
+          StringStruct('ProductVersion', '1.0.0')])
+      ]
+    ),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)

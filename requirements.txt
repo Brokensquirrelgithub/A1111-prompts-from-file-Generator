@@ -11,3 +11,6 @@ json5>=0.9.5
 
 # Required for file system operations
 shutilwhich>=1.1.0
+
+# Required for building the application
+pyinstaller>=5.0

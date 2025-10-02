@@ -26,6 +26,42 @@ This tool generates random prompts for Stable Diffusion's Automatic1111 WebUI by
 
 3. The application will automatically create a default profile if none exists.
 
+## Building the Application
+
+### Prerequisites
+- Python 3.7 or higher
+- pip (Python package manager)
+
+### Building on Windows/macOS/Linux
+
+1. Install the build dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. Run the build script:
+   ```bash
+   python build.py
+   ```
+
+3. The built application will be in the `dist` directory:
+   - **Windows**: `dist/A1111-Prompt-Generator.exe`
+   - **macOS**: `dist/A1111-Prompt-Generator.app`
+   - **Linux**: `dist/A1111-Prompt-Generator`
+
+### Customizing the Build
+
+- **Icon**: Place an `.ico` file named `icon.ico` in the project root to use it as the application icon.
+- **Version**: Edit `version.txt` to update the application version and metadata.
+- **Included Files**: The build script automatically includes the `data` and `profiles` directories. Modify `build.py` if you need to include additional files.
+
+### Distribution
+
+To distribute your application:
+1. Zip the contents of the `dist` directory
+2. Include a `README.txt` with instructions for your users
+3. (Optional) Create an installer using tools like Inno Setup (Windows) or Packages (macOS)
+
 ## Profiles
 
 The application supports multiple profiles, each with its own set of categories and prompt files. Profiles are stored in the `config/profiles/` directory.
