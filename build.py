@@ -40,21 +40,32 @@ def build():
         '--name', app_name,
         '--onefile',
         '--windowed',  # For GUI apps
-        '--add-data', f'{data_dir}{os.pathsep}data',
         '--add-data', f'{profiles_dir}{os.pathsep}profiles',
         '--noconfirm',  # Overwrite output directory without confirmation
         '--clean',  # Clean PyInstaller cache and remove temporary files
     ]
     
-    # Add icon if exists
+    # Handle icon based on platform
     if icon_path and os.path.exists(icon_path):
-        cmd.extend(['--icon', str(Path(icon_path).resolve())])
+        if platform.system() == 'Darwin':  # macOS
+            try:
+                from PIL import Image
+                # Convert ICO to ICNS for macOS
+                icns_path = os.path.splitext(icon_path)[0] + '.icns'
+                if not os.path.exists(icns_path):
+                    img = Image.open(icon_path)
+                    img.save(icns_path, format='ICNS')
+                cmd.extend(['--icon', icns_path])
+            except ImportError:
+                print("Warning: Pillow not available, skipping icon conversion")
+                # On macOS, we can proceed without an icon
+        else:
+            cmd.extend(['--icon', str(Path(icon_path).resolve())])
     
     # Platform specific options
     if platform.system() == 'Darwin':  # macOS
         cmd.extend([
             '--osx-bundle-identifier', 'com.example.promptgenerator',
-            '--osx-entitlements-file', 'entitlements.plist'
         ])
         # Create entitlements file if it doesn't exist
         if not os.path.exists('entitlements.plist'):
